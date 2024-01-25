@@ -138,12 +138,64 @@ class Plugin {
                     $addFields['title']['name'] = 'title';
                 }
 
+                //Tim
+                // Hack to make default values to work, because addfields otherwise discards them
+                $defaultValues = [];
+                foreach($addFields as $name => $val) {
+
+                    if( isset($val["default"]) ) {
+                        if ($template['name'] == 'event') {
+                            // This part only for events!
+                            //
+                            // This is a workaround for the Kirby limitation that query language is not parsed
+                            // for blueprint "default" values, so couldn't use {{ page.parent.children.last.startdate }} in the blueprint.
+                            // Instead we use some special date strings and do the query here instead.
+
+                            if($lastAddedPage = $parentInstance->childrenAndDrafts()->last()) {
+                               // Get values from last added to use as defaults, like Ki wanted
+                               if ($name == 'title' && $val['default'] == '1970-01-01 00:00:00') {
+                                   $defaultValues[$name] = $lastAddedPage->content()->startDate()->value();
+                               }
+                               elseif (($name == 'starttime' && $val['default'] == '00:15:00')) {
+                                   $defaultValues[$name] = $lastAddedPage->content()->startTime()->value();
+                               }
+                               elseif (($name == 'endtime' && $val['default'] == '00:15:00')) {
+                                   $defaultValues[$name] = $lastAddedPage->content()->endTime()->value();
+                               }
+                            }
+                            else {
+                                // This events has no siblings yet – clear the bullshit date and times
+                               if ($name == 'title' && $val['default'] == '1970-01-01 00:00:00') {
+                                   $defaultValues[$name] = '';
+                               }
+                               elseif (($name == 'starttime' && $val['default'] == '00:15:00')) {
+                                      $defaultValues[$name] = '';
+                              }
+                              elseif (($name == 'endtime' && $val['default'] == '00:15:00')) {
+                                     $defaultValues[$name] = '';
+                                 }
+                            }
+                        }
+
+                        else {
+                        // For all other
+                        $defaultValues[$name] = $val["default"];
+                        }
+                    }
+                    // If no default are set
+                    // Addfields set title = '' in the value array, there was probably some reason so let's do that too
+                    elseif ($name == 'title') {
+                        $defaultValues[$name] = '';
+                    }
+                }
+
+
                 $addFields = array_replace($fieldOrder, $addFields);
                 $addFields['template'] = $templateSelectField;
                 $addFields['parent'] = Plugin::hiddenField();
 
                 $templateName = $template['name'];
-                
+
                 foreach($addFields as $name => $addField) {
                     $addFields[$name]['endpoints'] = [
                         'field' =>  $parent . "/addfields/" . $templateName . "/" . $name,
@@ -162,18 +214,28 @@ class Plugin {
                 $templateData[$templateName] = $addFields;
             } catch (Throwable $e) {}
         }
+        // Tim
+        // Add some stuff to our defaultValue array
+        // title and fields are defined earlier
+        $defaultValues['parent'] = $parent;
+        $defaultValues['template'] = $firstTemplate;
+        $defaultValues['slug'] = "";
+
+        // These were previously in the return statement below:
+        // value' => [
+        //     'parent'   => $parent,
+        //     'template' => $firstTemplate,
+        //     'title' => "",
+        //     'slug' => ""
+        // ]
+
         return [
             'component' => 'k-page-create-dialog',
             'props' => [
                 'fields' => $templateData[$firstTemplate],
                 'submitButton' => t('page.draft.create'),
                 'templateData' => $templateData,
-                'value' => [
-                    'parent'   => $parent,
-                    'template' => $firstTemplate,
-                    'title' => "",
-                    'slug' => ""
-                ]
+                'value' => $defaultValues //Tim
             ]
         ];
     }
@@ -254,7 +316,7 @@ class Plugin {
     private static function getRedirectTarget($parent, $page): string {
         if (Plugin::isLegacy()) {
             $panelURL = function($page): string {
-                return '/' . $page->panelPath();
+                return '/' . $page->panel()->path();
             };
         } else {
             $panelURL = function($page): string {
